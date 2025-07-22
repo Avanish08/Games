@@ -4,6 +4,7 @@ import chess
 import chess.pgn
 import threading
 import time
+import random
 
 PIECE_VALUES = {
     chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 330,
@@ -14,8 +15,8 @@ def evaluate(board):
     score = 0
     for piece_type in PIECE_VALUES:
         score += PIECE_VALUES[piece_type] * (
-            len(board.pieces(piece_type, chess.WHITE))
-            - len(board.pieces(piece_type, chess.BLACK))
+            len(board.pieces(piece_type, chess.WHITE)) -
+            len(board.pieces(piece_type, chess.BLACK))
         )
     return score
 
@@ -23,33 +24,33 @@ def minimax(board, depth, alpha, beta, is_maximizing):
     if depth == 0 or board.is_game_over():
         return evaluate(board), None
 
-    best_move = None
-    if is_maximizing:
-        max_eval = -99999
-        for move in board.legal_moves:
-            board.push(move)
-            eval, _ = minimax(board, depth - 1, alpha, beta, False)
-            board.pop()
-            if eval > max_eval:
-                max_eval = eval
-                best_move = move
+    best_moves = []
+    best_eval = -float('inf') if is_maximizing else float('inf')
+
+    for move in board.legal_moves:
+        board.push(move)
+        eval, _ = minimax(board, depth - 1, alpha, beta, not is_maximizing)
+        board.pop()
+
+        if is_maximizing:
+            if eval > best_eval:
+                best_eval = eval
+                best_moves = [move]
+            elif eval == best_eval:
+                best_moves.append(move)
             alpha = max(alpha, eval)
-            if beta <= alpha:
-                break
-        return max_eval, best_move
-    else:
-        min_eval = 99999
-        for move in board.legal_moves:
-            board.push(move)
-            eval, _ = minimax(board, depth - 1, alpha, beta, True)
-            board.pop()
-            if eval < min_eval:
-                min_eval = eval
-                best_move = move
+        else:
+            if eval < best_eval:
+                best_eval = eval
+                best_moves = [move]
+            elif eval == best_eval:
+                best_moves.append(move)
             beta = min(beta, eval)
-            if beta <= alpha:
-                break
-        return min_eval, best_move
+
+        if beta <= alpha:
+            break
+
+    return best_eval, random.choice(best_moves) if best_moves else None
 
 class ChessGUI:
     def __init__(self, root, mode):
@@ -84,7 +85,7 @@ class ChessGUI:
         self.label_b.pack(side="left", padx=10)
         info.pack()
 
-        self.canvas = tk.Canvas(self.root, width=640, height=640)
+        self.canvas = tk.Canvas(self.root, width=640, height=660)
         self.canvas.pack()
         self.canvas.bind("<Button-1>", self.on_click)
 
@@ -116,16 +117,30 @@ class ChessGUI:
     def draw_board(self):
         self.canvas.delete("all")
         size = 80
-        colors = ["#F0D9B5", "#B58863"]
+        colors = ["#EEEED2", "#769656"]
         for r in range(8):
             for c in range(8):
-                color = colors[(r + c) & 1]
+                color = colors[(r + c) % 2]
                 self.canvas.create_rectangle(c * size, r * size, (c + 1) * size, (r + 1) * size, fill=color)
+
+        # Highlight last move
+        if self.move_history:
+            last_move = self.move_history[-1]
+            for sq in [last_move.from_square, last_move.to_square]:
+                r, c = divmod(sq, 8)
+                self.canvas.create_rectangle(c * size, (7 - r) * size, (c + 1) * size, (8 - r) * size,
+                                             outline="red", width=3)
+
         self.clear_highlight()
         for sq, piece in self.board.piece_map().items():
             r, c = divmod(sq, 8)
             self.canvas.create_text(c * size + 40, (7 - r) * size + 40,
                                     text=self.piece_unicode(piece), font=("Arial", 36))
+
+        # Add coordinate labels
+        for i in range(8):
+            self.canvas.create_text(i * size + 40, 645, text=chr(97 + i), font=("Arial", 12))  # a-h
+            self.canvas.create_text(5, (7 - i) * size + 40, text=str(i + 1), font=("Arial", 12))  # 1-8
 
     def piece_unicode(self, p):
         return {"P": "♙", "N": "♘", "B": "♗", "R": "♖", "Q": "♕", "K": "♔",
